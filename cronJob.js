@@ -65,6 +65,32 @@ const bot = new TelegramBot(config.telegram.botToken, { polling: true });
 // const openai = new OpenAI({ apiKey: config.openai.apiKey });
 const parser = new RSSParser();
 
+// Helper function to find article by callback data
+async function findArticleByCallbackData(callbackData) {
+  // First try the in-memory cache
+  const cachedArticle = global.articleCache?.get(callbackData);
+  if (cachedArticle) {
+    return cachedArticle;
+  }
+
+  // Fallback: search in news_data.json
+  try {
+    const articles = await loadNewsData();
+    const encodedId = callbackData.replace('summarize_', '');
+
+    for (const article of articles) {
+      const articleEncodedId = Buffer.from(article.id).toString('base64').slice(0, 50);
+      if (articleEncodedId === encodedId) {
+        return article;
+      }
+    }
+  } catch (error) {
+    await logger.error('Error searching for article in news_data.json', { error: error.message });
+  }
+
+  return null;
+}
+
 // Handle callback queries for summarize buttons
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
@@ -75,9 +101,10 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data.startsWith('summarize_')) {
       // Show loading message
       await bot.answerCallbackQuery(callbackQuery.id, { text: 'Generating summary...' });
-      
-      // Get article from cache
-      const article = global.articleCache?.get(data);
+
+      // Get article from cache or JSON file
+      const article = await findArticleByCallbackData(data);
+      console.log('Article found:', !!article);
       if (!article) {
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Article not found. Please try again.' });
         return;
@@ -345,8 +372,7 @@ async function summarizeArticle(article) {
       await logger.info(`Using RSS description for summarization (full content fetching disabled)`);
     }
     
-    const prompt = `Please summarize this F1 news article. This is for posting the content in X platform for f1 related contents.
-    create in 2-3 sentences and try to contain the most important information, Don't make the content incomplete.:
+    const prompt = `Summarize this F1 news article for posting on X (Twitter). Write 2-3 complete sentences covering the key information. Every sentence must be fully complete - never cut off mid-sentence:
 
 Title: ${article.title}
 Content: ${contentToSummarize}
@@ -362,7 +388,7 @@ Summary:`;
     const response = await client.chat.completions.create({
       model: config.openai.model || 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
-      max_completion_tokens: 100,
+      max_completion_tokens: 250,
       temperature: 0.3,
       top_p: 1,
       frequency_penalty: 0,
@@ -391,7 +417,7 @@ Summary:`;
         const fallbackResponse = await client.chat.completions.create({
           model: 'gpt-3.5-turbo',
           messages: [{ role: 'user', content: prompt }],
-          max_completion_tokens: 150,
+          max_completion_tokens: 250,
           temperature: 0.7
         });
         
