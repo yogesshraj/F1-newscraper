@@ -372,7 +372,14 @@ async function summarizeArticle(article) {
       await logger.info(`Using RSS description for summarization (full content fetching disabled)`);
     }
     
-    const prompt = `Summarize this F1 news article for posting on X (Twitter). Write 2-3 complete sentences covering the key information. Every sentence must be fully complete - never cut off mid-sentence:
+    const prompt = `Summarize this F1 news article for posting on X (Twitter). Write 2-3 complete sentences covering the key information. Every sentence must be fully complete - never cut off mid-sentence.
+
+Format each sentence on a new line starting with "> " like this:
+> First sentence here.
+
+> Second sentence here.
+
+> Third sentence here.
 
 Title: ${article.title}
 Content: ${contentToSummarize}
